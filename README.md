@@ -6,7 +6,8 @@ the Python yfinance library :-)
 
 TLDR:
 
-1. setup an AWS lambda with this code.
+1. setup an AWS lambda with this code - both the function and the associated
+   layer.
 2. Create an API gateway as trigger.
 3. Test with:
 ```console
@@ -21,14 +22,10 @@ VWRA.L,113.0
 
 5. Profit :-)
 
-Notes:
-
-- On macOS, create the package with:
-
-``` console
-mkdir /tmp/lima/package
-lima pip3 install yfinance --upgrade --no-cache-dir --target /tmp/lima/package
-mv /tmp/lima/package aws_lambda/
-```
-
-... and make sure the ARCH used by pip3 matches the architecture configured on AWS!
+>
+> Notes:
+>
+> - I have included a Make target to create the Python layer package on macOS
+>  using `lima`. Make sure the ARCH used by `pip3` inside `lima` matches the
+>  architecture configured on AWS!
+>

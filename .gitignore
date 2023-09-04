@@ -1,2 +1,4 @@
 /aws_lambda/__pycache__
 /aws_lambda/package
+/deployment_package.zip
+/layer_package.zip

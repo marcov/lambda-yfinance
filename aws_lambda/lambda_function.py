@@ -6,10 +6,10 @@ import json
 
 
 class PriceException(Exception):
-
     def __init__(self, status_code, *args):
         super().__init__(args)
         self.status_code = status_code
+
 
 def get_ticker_price(ticker_name):
     if not ticker_name:
@@ -23,18 +23,16 @@ def get_ticker_price(ticker_name):
         print(f"Got {e}")
         raise PriceException(e.response.status_code, e.response)
 
-    price = None
-
     for key in ("currentPrice", "ask"):
         try:
-            price = ticker.info[key]
+            if ticker.info[key] == 0.0:
+                continue
+
+            return ticker.info[key]
         except KeyError:
             pass
-
-    if price is None:
+    else:
         raise PriceException(404, f"No price found for ticker {ticker_name}")
-
-    return price
 
 
 def lambda_handler(event, context):
@@ -61,27 +59,35 @@ def lambda_handler(event, context):
 
     print(f"Request params: {request_params}")
 
-    ticker_name = request_params.get("ticker")
+    tickers_names = request_params.get("tickers")
     format_csv = request_params.get("csv", False)
     print(f"Format csv: {format_csv}")
 
-    if not ticker_name:
-        print(f"No 'ticker' name found in {request_params}")
+    if not tickers_names:
+        print(f"No 'tickers' URL-encoded parameter found in {request_params}")
         return lambda_api_gateway_response(400)
 
-    try:
-        print(f"Checking price for {ticker_name}")
-        price = get_ticker_price(ticker_name)
+    response_dict = dict()
 
-        if format_csv:
-            response_body = f"{ticker_name},{price}"
-            content_type= "text/csv"
-        else:
-            response_body = json.dumps({"ticker": ticker_name, "price": price})
-            content_type= "application/json"
+    for name in tickers_names.split(","):
+        try:
+            print(f"Checking price for {name}")
+            response_dict[name] = get_ticker_price(name)
+            print(f"Price is {response_dict[name]}")
 
-    except PriceException as e:
-        return lambda_api_gateway_response(e.status_code)
+        except PriceException as e:
+            return lambda_api_gateway_response(e.status_code)
+
+    if format_csv:
+        content_type = "text/csv"
+
+        response_body = "\n".join(
+            tuple(map(lambda item: f"{item[0]},{item[1]}", response_dict.items()))
+        )
+    else:
+        content_type = "application/json"
+
+        response_body = json.dumps(response_dict)
 
     print(f"Sending response body: {response_body}")
     return lambda_api_gateway_response(200, content_type, response_body)

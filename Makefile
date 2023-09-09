@@ -13,7 +13,6 @@ $(ZIP_PKG): aws_lambda
 	cd aws_lambda && zip -9 $@ lambda_function.py
 	mv aws_lambda/$@ .
 
-
 $(ZIP_LAYER_PKG):
 	if [ -d $(TMP_PKG_DIR) ]; then rm -r $(TMP_PKG_DIR); fi
 	lima pip3 install yfinance --upgrade --no-cache-dir --target $(TMP_PKG_DIR)
@@ -33,3 +32,18 @@ update-layer: $(ZIP_LAYER_PKG)
 
 clean:
 	rm -f $(ZIP_PKG) $(ZIP_LAYER_PKG)
+
+.PHONY: lambda-logs
+lambda-logs:
+	get_log_stream() { \
+		local -r log_stream_name="$$(aws logs describe-log-streams \
+				--log-group-name '/aws/lambda/$(LAMBDA_FUNCTION_NAME)' \
+				--query 'logStreams[*].logStreamName' | \
+			jq -r '.[-1]'\
+		)"; \
+		aws logs get-log-events \
+			--log-group-name '/aws/lambda/$(LAMBDA_FUNCTION_NAME)' \
+			--log-stream-name "$${log_stream_name}" | \
+			jq -r '.events | .[].message' | \
+			sed '/^$$/d'; \
+	}; get_log_stream

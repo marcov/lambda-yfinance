@@ -1,38 +1,53 @@
-#!/usr/bin/env python3
-
 import yfinance as yf
 import requests
 import json
+from pprint import pprint
 
 
-class PriceException(Exception):
+class ApiException(Exception):
     def __init__(self, status_code, *args):
         super().__init__(args)
         self.status_code = status_code
 
 
-def get_ticker_price(ticker_name):
+def get_ticker_info(ticker_name):
     if not ticker_name:
         raise RuntimeError("No ticker_name given")
 
     ticker = yf.Ticker(ticker_name)
 
     try:
-        ticker.get_info()
+        tinfo = ticker.get_info()
     except requests.exceptions.HTTPError as e:
-        print(f"Got {e}")
-        raise PriceException(e.response.status_code, e.response)
+        raise ApiException(e.response.status_code, e.response)
 
+    if not tinfo:
+        raise ApiException(501, "Could not retrieve ticker info")
+
+    # pprint(tinfo)
+    return tinfo
+
+
+def get_current_price(tinfo):
     for key in ("currentPrice", "ask"):
         try:
-            if ticker.info[key] == 0.0:
+            if tinfo[key] == 0.0:
                 continue
 
-            return ticker.info[key]
+            return tinfo[key]
         except KeyError:
             pass
     else:
-        raise PriceException(404, f"No price found for ticker {ticker_name}")
+        raise ApiException(400, f"No price found for ticker {tinfo['symbol']}")
+
+
+def get_daychange_percent(tinfo):
+    cur = get_current_price(tinfo)
+    prev = tinfo["previousClose"]
+
+    pct = lambda cur, prev: ((cur - prev) / prev) * 100
+
+    return round(pct(cur, prev), 2)
 
 
 def lambda_handler(event, context):
@@ -72,21 +87,33 @@ def lambda_handler(event, context):
     for name in tickers_names.split(","):
         try:
             print(f"Checking price for {name}")
-            response_dict[name] = get_ticker_price(name)
-            print(f"Price is {response_dict[name]}")
-
-        except PriceException as e:
+            tinfo = get_ticker_info(name)
+            resp_tuple = (get_current_price(tinfo), get_daychange_percent(tinfo))
+            response_dict[name] = resp_tuple
+        except ApiException as e:
             return lambda_api_gateway_response(e.status_code)
+
+    pprint(response_dict)
+
+    def list_to_string(lst):
+        to_string = lambda list_item: str(list_item)
+        return list(map(to_string, lst))
+
+    def to_csv():
+        return "\n".join(
+            map(
+                lambda dict_item: ",".join(
+                    [dict_item[0]] + list_to_string(dict_item[1])
+                ),
+                response_dict.items(),
+            )
+        )
 
     if format_csv:
         content_type = "text/csv"
-
-        response_body = "\n".join(
-            tuple(map(lambda item: f"{item[0]},{item[1]}", response_dict.items()))
-        )
+        response_body = to_csv()
     else:
         content_type = "application/json"
-
         response_body = json.dumps(response_dict)
 
     print(f"Sending response body: {response_body}")

@@ -1,7 +1,24 @@
 import yfinance as yf
 import requests
 import json
-from pprint import pprint
+from pprint import pformat
+
+import logging
+
+logger = logging.getLogger()
+
+
+def setup_logger():
+    logger.setLevel(logging.INFO)
+
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    ch.setFormatter(formatter)
+
+    logger.addHandler(ch)
 
 
 class ApiException(Exception):
@@ -24,7 +41,7 @@ def get_ticker_info(ticker_name):
     if not tinfo:
         raise ApiException(501, "Could not retrieve ticker info")
 
-    # pprint(tinfo)
+    logger.debug(pformat(tinfo))
     return tinfo
 
 
@@ -51,8 +68,11 @@ def get_daychange_percent(tinfo):
 
 
 def lambda_handler(event, context):
-    if context:
-        print("Lambda Request ID:", context.aws_request_id)
+    setup_logger()
+
+    logger.info(
+        f"Started -- lambda request ID: {context.aws_request_id if context else '[not lambda]'}"
+    )
 
     # API gateway expected response.
     lambda_api_gateway_response = lambda status_code, content_type=None, body=None: {
@@ -66,34 +86,34 @@ def lambda_handler(event, context):
     request_params = event.get("queryStringParameters")
 
     if request_params:
-        print("Detected API gateway invocation")
+        logger.info("Detected API gateway invocation")
     else:
-        print("Detected naked invocation")
+        logger.info("Detected naked invocation")
         # Assume API gateway
         request_params = event
 
-    print(f"Request params: {request_params}")
+    logger.info(f"Request params: {request_params}")
 
     tickers_names = request_params.get("tickers")
     format_csv = request_params.get("csv", False)
-    print(f"Format csv: {format_csv}")
+    logger.info(f"Format csv: {format_csv}")
 
     if not tickers_names:
-        print(f"No 'tickers' URL-encoded parameter found in {request_params}")
+        logger.error(f"No 'tickers' URL-encoded parameter found in {request_params}")
         return lambda_api_gateway_response(400)
 
     response_dict = dict()
 
     for name in tickers_names.split(","):
         try:
-            print(f"Checking price for {name}")
+            logger.info(f"Checking price for {name}")
             tinfo = get_ticker_info(name)
             resp_tuple = (get_current_price(tinfo), get_daychange_percent(tinfo))
             response_dict[name] = resp_tuple
         except ApiException as e:
             return lambda_api_gateway_response(e.status_code)
 
-    pprint(response_dict)
+    logger.info(f"Response dict: {pformat(response_dict)}")
 
     def list_to_string(lst):
         to_string = lambda list_item: str(list_item)
@@ -116,5 +136,5 @@ def lambda_handler(event, context):
         content_type = "application/json"
         response_body = json.dumps(response_dict)
 
-    print(f"Sending response body: {response_body}")
+    logger.debug(f"Sending response body: {response_body}")
     return lambda_api_gateway_response(200, content_type, response_body)

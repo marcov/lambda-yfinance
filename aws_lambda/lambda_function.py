@@ -2,23 +2,9 @@ import yfinance as yf
 import requests
 import json
 from pprint import pformat
-
 import logging
 
-logger = logging.getLogger()
-
-
-def setup_logger():
-    logger.setLevel(logging.INFO)
-
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-    ch.setFormatter(formatter)
-
-    logger.addHandler(ch)
+logger: logging.Logger
 
 
 class ApiException(Exception):
@@ -68,11 +54,27 @@ def get_daychange_percent(tinfo):
 
 
 def lambda_handler(event, context):
-    setup_logger()
+    global logger
+    logger = getattr(context, "logger", logging.getLogger())
+
+    logger.setLevel(logging.INFO)
 
     logger.info(
-        f"Started -- lambda request ID: {context.aws_request_id if context else '[not lambda]'}"
+        f"Started -- lambda request ID: {context.aws_request_id}"
     )
+
+    try:
+        request_params = event["queryStringParameters"]
+        logger.info("Detected API gateway invocation")
+    except KeyError:
+        request_params = event
+        logger.info("Detected naked invocation")
+
+    logger.info(f"Request params: {request_params}")
+
+    tickers_names = request_params.get("tickers")
+    format_csv = request_params.get("csv", False)
+    logger.info(f"Format csv: {format_csv}")
 
     # API gateway expected response.
     lambda_api_gateway_response = lambda status_code, content_type=None, body=None: {
@@ -81,22 +83,6 @@ def lambda_handler(event, context):
         "headers": {"Content-Type": content_type},
         "body": body,
     }
-
-    # This is when it's invoked directly with no API gateway.
-    request_params = event.get("queryStringParameters")
-
-    if request_params:
-        logger.info("Detected API gateway invocation")
-    else:
-        logger.info("Detected naked invocation")
-        # Assume API gateway
-        request_params = event
-
-    logger.info(f"Request params: {request_params}")
-
-    tickers_names = request_params.get("tickers")
-    format_csv = request_params.get("csv", False)
-    logger.info(f"Format csv: {format_csv}")
 
     if not tickers_names:
         logger.error(f"No 'tickers' URL-encoded parameter found in {request_params}")

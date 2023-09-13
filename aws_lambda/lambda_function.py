@@ -46,7 +46,7 @@ def get_ticker_info(ticker_name):
 
 
 def get_current_price(tinfo):
-    for key in ("currentPrice", "ask"):
+    for key in ("currentPrice", "ask", "open"):
         try:
             if tinfo[key] == 0.0:
                 continue

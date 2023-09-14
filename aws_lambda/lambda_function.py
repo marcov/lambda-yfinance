@@ -1,56 +1,17 @@
 import yfinance as yf
-import requests
 import json
 from pprint import pformat
 import logging
+import pandas
+import time
 
 logger: logging.Logger
 
 
-class ApiException(Exception):
-    def __init__(self, status_code, *args):
-        super().__init__(args)
-        self.status_code = status_code
-
-
-def get_ticker_info(ticker_name):
-    if not ticker_name:
-        raise RuntimeError("No ticker_name given")
-
-    ticker = yf.Ticker(ticker_name)
-
-    try:
-        tinfo = ticker.get_info()
-    except requests.exceptions.HTTPError as e:
-        raise ApiException(e.response.status_code, e.response)
-
-    if not tinfo:
-        raise ApiException(501, "Could not retrieve ticker info")
-
-    logger.debug(pformat(tinfo))
-    return tinfo
-
-
-def get_current_price(tinfo):
-    for key in ("currentPrice", "ask", "open"):
-        try:
-            if tinfo[key] == 0.0:
-                continue
-
-            return tinfo[key]
-        except KeyError:
-            pass
-    else:
-        raise ApiException(400, f"No price found for ticker {tinfo['symbol']}")
-
-
-def get_daychange_percent(tinfo):
-    cur = get_current_price(tinfo)
-    prev = tinfo["previousClose"]
-
-    pct = lambda cur, prev: ((cur - prev) / prev) * 100
-
-    return round(pct(cur, prev), 2)
+def get_change_percent(old, new):
+    if not old:
+        return 0
+    return round(((new - old) / old) * 100, 2)
 
 
 def lambda_handler(event, context):
@@ -59,9 +20,7 @@ def lambda_handler(event, context):
 
     logger.setLevel(logging.INFO)
 
-    logger.info(
-        f"Started -- lambda request ID: {context.aws_request_id}"
-    )
+    logger.info(f"Started -- lambda request ID: {context.aws_request_id}")
 
     try:
         request_params = event["queryStringParameters"]
@@ -70,9 +29,9 @@ def lambda_handler(event, context):
         request_params = event
         logger.info("Detected naked invocation")
 
-    logger.info(f"Request params: {request_params}")
+    logger.debug(f"Request params: {request_params}")
 
-    tickers_names = request_params.get("tickers")
+    tickers_names = request_params.get("tickers").split(",")
     format_csv = request_params.get("csv", False)
     logger.info(f"Format csv: {format_csv}")
 
@@ -90,16 +49,56 @@ def lambda_handler(event, context):
 
     response_dict = dict()
 
-    for name in tickers_names.split(","):
-        try:
-            logger.info(f"Checking price for {name}")
-            tinfo = get_ticker_info(name)
-            resp_tuple = (get_current_price(tinfo), get_daychange_percent(tinfo))
-            response_dict[name] = resp_tuple
-        except ApiException as e:
-            return lambda_api_gateway_response(e.status_code)
+    all_data: pandas.DataFrame
 
-    logger.info(f"Response dict: {pformat(response_dict)}")
+    ts = time.time()
+    logger.info(f"Downloading data for {len(tickers_names)} tickers ...")
+
+    all_data = yf.download(
+        tickers=tickers_names, period="3d", rounding=True, progress=False
+    )
+
+    logger.info(f"Data download took {round(time.time() - ts, 1)}s")
+
+    # HACK - learn how to use pandas ...
+    if len(tickers_names) == 1:
+        all_close = {tickers_names[0]: all_data["Close"]}
+    else:
+        all_close = all_data["Close"]
+
+    for ticker in tickers_names:
+        logger.debug(f"Reading downloaded info for {ticker}")
+
+        try:
+            logger.debug(f"{ticker}: all close: {all_close[ticker]}")
+            close_filt = tuple(filter(pandas.notna, all_close[ticker]))
+
+            if len(close_filt) <= 2:
+                logger.warning(f"len close_filt for {ticker} is {len(close_filt)} -- {all_close[ticker]}")
+                if len(close_filt) < 2:
+                    continue
+
+            curr = close_filt[-1]
+            prev = close_filt[-2]
+
+        except KeyError as e:
+            logger.error(f"Got exception {e} while reading price")
+            return lambda_api_gateway_response(
+                400, f"Failed to read price for {ticker}"
+            )
+        except IndexError as e:
+            logger.error(f"Got exception {e} while reading price")
+            return lambda_api_gateway_response(
+                400, f"Failed to read price for {ticker}"
+            )
+
+        change_pct = get_change_percent(prev, curr)
+        response_dict[ticker] = (curr, change_pct)
+        logger.info(
+            f"{ticker}: open: {prev}, close: {curr}, chg: {change_pct}%"
+        )
+
+    logger.debug(f"Response dict: {pformat(response_dict)}")
 
     def list_to_string(lst):
         to_string = lambda list_item: str(list_item)

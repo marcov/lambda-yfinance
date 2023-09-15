@@ -1,8 +1,20 @@
 # lambda-yfinance
 
-I was super bothered about Google Sheets having broken quite a few tickers. This
-gave me a good reason to have my own AWS lambda powered stocks price API using
-the Python yfinance library :-).
+I was super bothered about Google Sheets `GOOGLEFINANCE()` function being broken
+for quite a few tickers I want to track in my spreadsheet. This gave me a good
+reason to have my own AWS lambda powered stocks price API using the Python
+yfinance library :-).
+
+## Testing Notes
+
+Unluckily, when running on AWS lambda, the yfinance history download is
+significantly throttled when querying a big enough number for tickers (e.g.
+~16). I'm speculating the bottleneck could be a combination of lambda machine
+core counts + Python GIL, but I haven't spent time to investigate that:
+
+- running the function on my machine (8 cores MPB M1) takes less than 1s.
+- running on a 4 core VM takes around 4s.
+- running on AWS lambda is around 8 to 12s.
 
 ## Features
 

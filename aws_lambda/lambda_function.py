@@ -74,7 +74,9 @@ def lambda_handler(event, context):
             close_filt = tuple(filter(pandas.notna, all_close[ticker]))
 
             if len(close_filt) <= 2:
-                logger.warning(f"len close_filt for {ticker} is {len(close_filt)} -- {all_close[ticker]}")
+                logger.warning(
+                    f"len close_filt for {ticker} is {len(close_filt)} -- {all_close[ticker]}"
+                )
                 if len(close_filt) < 2:
                     continue
 
@@ -94,9 +96,7 @@ def lambda_handler(event, context):
 
         change_pct = get_change_percent(prev, curr)
         response_dict[ticker] = (curr, change_pct)
-        logger.info(
-            f"{ticker}: open: {prev}, close: {curr}, chg: {change_pct}%"
-        )
+        logger.info(f"{ticker}: open: {prev}, close: {curr}, chg: {change_pct}%")
 
     logger.debug(f"Response dict: {pformat(response_dict)}")
 

@@ -1,7 +1,11 @@
+LAMBDA_ARCH ?= arm64
 LAMBDA_FUNCTION_NAME := lambda_quotes
 ZIP_PKG := deployment_package.zip
-ZIP_LAYER_PKG := layer_package.zip
+ZIP_LAYER_PKG := layer_package_$(LAMBDA_ARCH).zip
 TMP_PKG_DIR := /tmp/lima/python
+UID := $(shell id -u)
+GID := $(shell id -g)
+PIP3_HAL_CMD := lima podman run --arch $(LAMBDA_ARCH) --rm -it -v $(TMP_PKG_DIR):$(TMP_PKG_DIR) -u $(UID):$(GID) python:3.11
 
 .PHONY: update-function
 update-function: $(ZIP_PKG)
@@ -15,7 +19,8 @@ $(ZIP_PKG): aws_lambda
 
 $(ZIP_LAYER_PKG):
 	if [ -d $(TMP_PKG_DIR) ]; then rm -r $(TMP_PKG_DIR); fi
-	lima pip3 install yfinance --upgrade --no-cache-dir --target $(TMP_PKG_DIR)
+	mkdir -p $(TMP_PKG_DIR)
+	$(PIP3_HAL_CMD) pip3 install yfinance --upgrade --no-cache-dir --target $(TMP_PKG_DIR)
 	find $(TMP_PKG_DIR) -type d -name "__pycache__"  | xargs -I _ rm -r _
 	cd $(TMP_PKG_DIR)/.. && zip -9 -r /tmp/$@ python
 	mv /tmp/$@ .

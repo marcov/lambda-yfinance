@@ -44,6 +44,9 @@ GOOG,137.72,0.38
 > - I have included a make target to create the Python layer package on macOS
 >  using `lima`. Make sure the ARCH used by `pip3` inside `lima` matches the
 >  architecture configured on AWS!
+>  If you are limited to only build on a specific architecture, you can use QEMU
+>  user emulation + podman to build other archs. See the Makefile and
+>  https://wiki.debian.org/QemuUserEmulation
 >
 
 2. Create an API gateway as trigger.

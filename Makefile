@@ -18,14 +18,16 @@ $(ZIP_PKG): aws_lambda
 	cd aws_lambda && zip -9 $@ lambda_function.py
 	mv aws_lambda/$@ .
 
+.PHONY: $(ZIP_LAYER_PKG)
 $(ZIP_LAYER_PKG): $(TMP_PKG_DIR)
+	rm -f $@
 	cd $(TMP_PKG_DIR)/.. && zip -9 -r /tmp/$@ $(shell basename $(TMP_PKG_DIR))
 	mv /tmp/$@ .
 
 $(TMP_PKG_DIR):
 	if [ -d $(TMP_PKG_DIR) ]; then rm -r $(TMP_PKG_DIR); fi
 	mkdir -p $(TMP_PKG_DIR)
-	$(PIP3_HAL_CMD) pip3 install yfinance --upgrade --no-cache-dir --target $(TMP_PKG_DIR)
+	$(PIP3_HAL_CMD) pip3 install yfinance==0.2.28 --upgrade --no-cache-dir --target $(TMP_PKG_DIR)
 	find $(TMP_PKG_DIR) -type d -name "__pycache__"  | xargs -I _ rm -r _
 
 .PHONY: update-layer

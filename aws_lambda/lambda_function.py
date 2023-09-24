@@ -55,7 +55,7 @@ def lambda_handler(event, context):
     logger.info(f"Downloading data for {len(tickers_names)} tickers ...")
 
     all_data : pandas.DataFrame = yf.download(
-        tickers=tickers_names, period="7d", rounding=True, progress=False, timeout=20
+        tickers=tickers_names, period="3d", rounding=True, progress=False, timeout=20
     )
 
     logger.info(f"Data download took {round(time.time() - ts, 1)}s")

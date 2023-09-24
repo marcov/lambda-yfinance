@@ -49,12 +49,12 @@ def lambda_handler(event, context):
 
     response_dict = dict()
 
-    all_data: pandas.DataFrame
+    yf.set_tz_cache_location("/tmp/yf_cache")
 
     ts = time.time()
     logger.info(f"Downloading data for {len(tickers_names)} tickers ...")
 
-    all_data = yf.download(
+    all_data : pandas.DataFrame = yf.download(
         tickers=tickers_names, period="7d", rounding=True, progress=False, timeout=20
     )
 

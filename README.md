@@ -7,9 +7,18 @@ yfinance library :-).
 
 ## Testing Notes
 
-Unluckily, when running on AWS lambda, the yfinance history download is
-significantly throttled when querying a big enough number for tickers (e.g.
-~16). I'm speculating the bottleneck could be a combination of lambda machine
+When running on AWS lambda, the yfinance history download is
+quite slow if querying a big enough number for tickers (e.g.
+~16). It's a combination of:
+- a bug in the multitasking setup done in the yfinance lib, limiting the number
+  of parallel downloads.
+- No timezone cache without setting up some storage. This results in an extra
+  HTTP request to query each ticker's TZ. The easiest way I can think to fix
+  this is to set up an extra cache layer, containing the TZ of all tickers you
+  care about.
+- Individual HTTP request taking a bit longer than expected.
+
+I'm speculating the bottleneck could be a combination of lambda machine
 core counts + Python GIL, but I haven't spent time to investigate that:
 
 - running the function on my machine (8 cores MPB M1) takes less than 1s.

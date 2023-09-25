@@ -49,7 +49,14 @@ def lambda_handler(event, context):
 
     response_dict = dict()
 
-    yf.set_tz_cache_location("/tmp/yf_cache")
+    # Somehow AWS keeps Python running with the yfinance module loaded,
+    # resulting in set_tz_cache_location to assert when the cache was
+    # already setup by a previous invocation. Ignore the failure and keep
+    # going.
+    try:
+        yf.set_tz_cache_location("/tmp/yf_cache")
+    except AssertionError as e:
+        logger.warning(f"set_tz cache got assertion: {e}")
 
     ts = time.time()
     logger.info(f"Downloading data for {len(tickers_names)} tickers ...")

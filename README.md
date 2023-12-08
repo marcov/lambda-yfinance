@@ -5,9 +5,11 @@ for quite a few tickers I want to track in my spreadsheet. This gave me a good
 reason to have my own AWS lambda powered stocks price API using the Python
 yfinance library :-).
 
+As explained here, I have patched the yfinance lib to achieve better run times.
+
 ## Testing Notes
 
-When running on AWS lambda, the yfinance history download is
+When running on AWS lambda, the yfinance history download was
 quite slow if querying a big enough number for tickers (e.g.
 ~16). It's a combination of:
 - a bug in the multitasking setup done in the yfinance lib, limiting the number
@@ -18,8 +20,10 @@ quite slow if querying a big enough number for tickers (e.g.
   care about.
 - Individual HTTP request taking a bit longer than expected.
 
-I'm speculating the bottleneck could be a combination of lambda machine
-core counts + Python GIL, but I haven't spent time to investigate that:
+There are patches in this repo to address that. I should eventually try to
+upstream them ...
+
+Some benchmarks:
 
 - running the function on my machine (8 cores MPB M1) takes less than 1s.
 - running on a 4 core VM takes around 4s.

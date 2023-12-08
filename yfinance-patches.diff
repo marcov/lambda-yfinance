@@ -1,0 +1,271 @@
+diff --git a/tmp/lima/python-pkg-lambda_quotes/python/yfinance/base.py b/./base.py
+index 65a876b..67e1fff 100644
+--- a/tmp/lima/python-pkg-lambda_quotes/python/yfinance/base.py
++++ b/./base.py
+@@ -184,12 +184,16 @@ class TickerBase:
+         # if the ticker is MUTUALFUND or ETF, then get capitalGains events
+         params["events"] = "div,splits,capitalGains"
+ 
+-        params_pretty = dict(params)
+-        tz = self._get_ticker_tz(proxy, timeout)
+-        for k in ["period1", "period2"]:
+-            if k in params_pretty:
+-                params_pretty[k] = str(pd.Timestamp(params[k], unit='s').tz_localize("UTC").tz_convert(tz))
+-        logger.debug(f'{self.ticker}: Yahoo GET parameters: {str(params_pretty)}')
++        # Calling _get_ticker_tz() before downloading the data is wasteful,
++        # since it makes another HTTP request, that here is only used for a
++        # debug log.
++        if logger.isEnabledFor(logging.DEBUG):
++            params_pretty = dict(params)
++            tz = self._get_ticker_tz(proxy, timeout)
++            for k in ["period1", "period2"]:
++                if k in params_pretty:
++                    params_pretty[k] = str(pd.Timestamp(params[k], unit='s').tz_localize("UTC").tz_convert(tz))
++            logger.debug(f'{self.ticker}: Yahoo GET parameters: {str(params_pretty)}')
+ 
+         # Getting data from json
+         url = f"{self._base_url}/v8/finance/chart/{self.ticker}"
+@@ -218,6 +222,8 @@ class TickerBase:
+         except Exception:
+             pass
+ 
++        tz = self._get_ticker_tz(proxy, timeout, data)
++
+         # Store the meta data that gets retrieved simultaneously
+         try:
+             self._history_metadata = data["chart"]["result"][0]["meta"]
+@@ -685,7 +691,7 @@ class TickerBase:
+                 df_new.index = new_index
+             logger.debug('df_new:' + '\n' + str(df_new))
+ 
+-            # Calibrate! 
++            # Calibrate!
+             common_index = np.intersect1d(df_block.index, df_new.index)
+             if len(common_index) == 0:
+                 # Can't calibrate so don't attempt repair
+@@ -699,9 +705,9 @@ class TickerBase:
+                 f_tag = df_block_calib['Adj Close'] == tag
+                 if f_tag.any():
+                     div_adjusts = df_block_calib['Adj Close'] / df_block_calib['Close']
+-                    # The loop below assumes each 1d repair is isoloated, i.e. surrounded by 
+-                    # good data. Which is case most of time. 
+-                    # But in case are repairing a chunk of bad 1d data, back/forward-fill the 
++                    # The loop below assumes each 1d repair is isoloated, i.e. surrounded by
++                    # good data. Which is case most of time.
++                    # But in case are repairing a chunk of bad 1d data, back/forward-fill the
+                     # good div-adjustments - not perfect, but a good backup.
+                     div_adjusts[f_tag] = np.nan
+                     div_adjusts = div_adjusts.fillna(method='bfill').fillna(method='ffill')
+@@ -785,14 +791,14 @@ class TickerBase:
+             no_fine_data_dts = []
+             for idx in bad_dts:
+                 if idx not in df_new.index:
+-                    # Yahoo didn't return finer-grain data for this interval, 
++                    # Yahoo didn't return finer-grain data for this interval,
+                     # so probably no trading happened.
+                     no_fine_data_dts.append(idx)
+             if len(no_fine_data_dts) > 0:
+                 logger.debug(f"Yahoo didn't return finer-grain data for these intervals: " + str(no_fine_data_dts))
+             for idx in bad_dts:
+                 if idx not in df_new.index:
+-                    # Yahoo didn't return finer-grain data for this interval, 
++                    # Yahoo didn't return finer-grain data for this interval,
+                     # so probably no trading happened.
+                     continue
+                 df_new_row = df_new.loc[idx]
+@@ -1125,7 +1131,7 @@ class TickerBase:
+         div_indices = np.where(f_div)[0]
+         last_div_idx = div_indices[-1]
+         if last_div_idx == 0:
+-            # Not enough data to recalculate the div-adjustment, 
++            # Not enough data to recalculate the div-adjustment,
+             # because need close day before
+             logger.debug('div-adjust-repair: Insufficient data to recalculate div-adjustment')
+             return df
+@@ -1169,8 +1175,8 @@ class TickerBase:
+         # stock split to old price data.
+         #
+         # There is a slight complication, because Yahoo does another stupid thing.
+-        # Sometimes the old data is adjusted twice. So cannot simply assume 
+-        # which direction to reverse adjustment - have to analyse prices and detect. 
++        # Sometimes the old data is adjusted twice. So cannot simply assume
++        # which direction to reverse adjustment - have to analyse prices and detect.
+         # Not difficult.
+ 
+         logger = utils.get_yf_logger()
+@@ -1218,7 +1224,7 @@ class TickerBase:
+         OHLC = ['Open', 'High', 'Low', 'Close']
+         OHLCA = OHLC + ['Adj Close']
+ 
+-        # Do not attempt repair of the split is small, 
++        # Do not attempt repair of the split is small,
+         # could be mistaken for normal price variance
+         if 0.8 < split < 1.25:
+             logger.info("price-repair-split: Split ratio too close to 1. Won't repair")
+@@ -1256,10 +1262,10 @@ class TickerBase:
+         else:
+             debug_cols = []
+ 
+-        # Calculate daily price % change. To reduce effect of price volatility, 
++        # Calculate daily price % change. To reduce effect of price volatility,
+         # calculate change for each OHLC column.
+         if interday and interval != '1d' and split not in [100.0, 100, 0.001]:
+-            # Avoid using 'Low' and 'High'. For multiday intervals, these can be 
++            # Avoid using 'Low' and 'High'. For multiday intervals, these can be
+             # very volatile so reduce ability to detect genuine stock split errors
+             _1d_change_x = np.full((n, 2), 1.0)
+             price_data = df2[['Open','Close']].replace(0.0, 1.0).to_numpy()
+@@ -1407,9 +1413,9 @@ class TickerBase:
+         if correct_columns_individually:
+             f_corrected = np.full(n, False)
+             if correct_volume:
+-                # If Open or Close is repaired but not both, 
++                # If Open or Close is repaired but not both,
+                 # then this means the interval has a mix of correct
+-                # and errors. A problem for correcting Volume, 
++                # and errors. A problem for correcting Volume,
+                 # so use a heuristic:
+                 # - if both Open & Close were Nx bad => Volume is Nx bad
+                 # - if only one of Open & Close are Nx bad => Volume is 0.5*Nx bad
+@@ -1423,7 +1429,7 @@ class TickerBase:
+                 if appears_suspended and (idx_latest_active is not None and idx_latest_active >= idx_first_f):
+                     # Suspended midway during data date range.
+                     # 1: process data before suspension in index-ascending (date-descending) order.
+-                    # 2: process data after suspension in index-descending order. Requires signals to be reversed, 
++                    # 2: process data after suspension in index-descending order. Requires signals to be reversed,
+                     #    then returned ranges to also be reversed, because this logic was originally written for
+                     #    index-ascending (date-descending) order.
+                     fj = f[:, j]
+@@ -1513,7 +1519,7 @@ class TickerBase:
+             if appears_suspended and (idx_latest_active is not None and idx_latest_active >= idx_first_f):
+                 # Suspended midway during data date range.
+                 # 1: process data before suspension in index-ascending (date-descending) order.
+-                # 2: process data after suspension in index-descending order. Requires signals to be reversed, 
++                # 2: process data after suspension in index-descending order. Requires signals to be reversed,
+                 #    then returned ranges to also be reversed, because this logic was originally written for
+                 #    index-ascending (date-descending) order.
+                 ranges_before = map_signals_to_ranges(f[idx_latest_active:], f_up[idx_latest_active:], f_down[idx_latest_active:])
+@@ -1580,7 +1586,7 @@ class TickerBase:
+ 
+         return df2
+ 
+-    def _get_ticker_tz(self, proxy, timeout):
++    def _get_ticker_tz(self, proxy, timeout, data=None):
+         if self._tz is not None:
+             return self._tz
+         cache = utils.get_tz_cache()
+@@ -1592,7 +1598,7 @@ class TickerBase:
+             tz = None
+ 
+         if tz is None:
+-            tz = self._fetch_ticker_tz(proxy, timeout)
++            tz = self._fetch_ticker_tz(proxy, timeout, data)
+ 
+             if utils.is_valid_timezone(tz):
+                 # info fetch is relatively slow so cache timezone
+@@ -1604,8 +1610,10 @@ class TickerBase:
+         return tz
+ 
+     @utils.log_indent_decorator
+-    def _fetch_ticker_tz(self, proxy, timeout):
+-        # Query Yahoo for fast price data just to get returned timezone
++    def _fetch_ticker_tz(self, proxy, timeout, data=None):
++        # Query Yahoo for fast price data just to get returned timezone.
++        # If data is provided, get the timezone from it instead of reaching
++        # out to Yahoo.
+ 
+         logger = utils.get_yf_logger()
+ 
+@@ -1614,26 +1622,27 @@ class TickerBase:
+         # Getting data from json
+         url = f"{self._base_url}/v8/finance/chart/{self.ticker}"
+ 
+-        try:
+-            data = self._data.cache_get(url=url, params=params, proxy=proxy, timeout=timeout)
+-            data = data.json()
+-        except Exception as e:
+-            logger.error(f"Failed to get ticker '{self.ticker}' reason: {e}")
+-            return None
++        if not data:
++            try:
++                data = self._data.cache_get(url=url, params=params, proxy=proxy, timeout=timeout)
++                data = data.json()
++            except Exception as e:
++                logger.error(f"Failed to get ticker '{self.ticker}' reason: {e}")
++                return None
++
++        error = data.get('chart', {}).get('error', None)
++        if error:
++            # explicit error from yahoo API
++            logger.debug(f"Got error from yahoo api for ticker {self.ticker}, Error: {error}")
+         else:
+-            error = data.get('chart', {}).get('error', None)
+-            if error:
+-                # explicit error from yahoo API
+-                logger.debug(f"Got error from yahoo api for ticker {self.ticker}, Error: {error}")
+-            else:
+-                try:
+-                    return data["chart"]["result"][0]["meta"]["exchangeTimezoneName"]
+-                except Exception as err:
+-                    logger.error(f"Could not get exchangeTimezoneName for ticker '{self.ticker}' reason: {err}")
+-                    logger.debug("Got response: ")
+-                    logger.debug("-------------")
+-                    logger.debug(f" {data}")
+-                    logger.debug("-------------")
++            try:
++                return data["chart"]["result"][0]["meta"]["exchangeTimezoneName"]
++            except Exception as err:
++                logger.error(f"Could not get exchangeTimezoneName for ticker '{self.ticker}' reason: {err}")
++                logger.debug("Got response: ")
++                logger.debug("-------------")
++                logger.debug(f" {data}")
++                logger.debug("-------------")
+         return None
+ 
+     def get_recommendations(self, proxy=None, as_dict=False):
+diff --git a/tmp/lima/python-pkg-lambda_quotes/python/yfinance/data.py b/./data.py
+index 442c747..eafc7f9 100644
+--- a/tmp/lima/python-pkg-lambda_quotes/python/yfinance/data.py
++++ b/./data.py
+@@ -49,12 +49,16 @@ class TickerData:
+ 
+     def get(self, url, user_agent_headers=None, params=None, proxy=None, timeout=30):
+         proxy = self._get_proxy(proxy)
++        logger = utils.get_yf_logger()
++        start_time = time.time()
++        logger.info(f"> URL GET {self.ticker} start")
+         response = self._session.get(
+             url=url,
+             params=params,
+             proxies=proxy,
+             timeout=timeout,
+             headers=user_agent_headers or self.user_agent_headers)
++        logger.info(f"< URL GET {self.ticker} took {round(time.time() - start_time, 2)}s")
+         return response
+ 
+     @lru_cache_freezeargs
+diff --git a/tmp/lima/python-pkg-lambda_quotes/python/yfinance/multi.py b/./multi.py
+index d51791f..0446b3b 100644
+--- a/tmp/lima/python-pkg-lambda_quotes/python/yfinance/multi.py
++++ b/./multi.py
+@@ -31,6 +31,10 @@ import pandas as _pd
+ from . import Ticker, utils
+ from . import shared
+ 
++# This needs to be done at top level, not inside a function, since the thread
++# pool config gets decided by the multitasking lib when evaluating the "@task"
++# decorator, and it cannot be changed at a later point.
++_multitasking.set_max_threads(32)
+ 
+ @utils.log_indent_decorator
+ def download(tickers, start=None, end=None, actions=False, threads=True, ignore_tz=None,
+@@ -145,9 +149,6 @@ def download(tickers, start=None, end=None, actions=False, threads=True, ignore_
+ 
+     # download using threads
+     if threads:
+-        if threads is True:
+-            threads = min([len(tickers), _multitasking.cpu_count() * 2])
+-        _multitasking.set_max_threads(threads)
+         for i, ticker in enumerate(tickers):
+             _download_one_threaded(ticker, period=period, interval=interval,
+                                    start=start, end=end, prepost=prepost,

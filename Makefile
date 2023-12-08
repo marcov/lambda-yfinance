@@ -1,37 +1,46 @@
-LAMBDA_ARCH ?= arm64
 LAMBDA_FUNCTION_NAME := lambda_quotes
-ZIP_PKG := deployment_package.zip
-ZIP_LAYER_PKG := layer_package_$(LAMBDA_ARCH).zip
-# Root dir of the layer needs to be called python
-TMP_PKG_DIR := /tmp/lima/python-pkg-$(LAMBDA_FUNCTION_NAME)/python
-UID := $(shell id -u)
-GID := $(shell id -g)
-PIP3_HAL_CMD := lima podman run --arch $(LAMBDA_ARCH) --rm -it -v $(TMP_PKG_DIR):$(TMP_PKG_DIR) -u $(UID):$(GID) python:3.11
+# The CPU architecture of the machine running the AWS lambda function.
+LAMBDA_ARCH ?= arm64
+LAMBDA_FUNCTION_ZIPFILE := deployment_package.zip
+
+# Python packages required to run the lambda
+PYTHON_PKGS_ZIPFILE_LAYER := layer_package_$(LAMBDA_ARCH).zip
+
+# Root dir where the Python packages gets populated during build
+PIP_INSTALL_TARGET_DIR := /tmp/lima/python-pkg-$(LAMBDA_FUNCTION_NAME)/python
+
+# Support creating the Python layer on macOS
+ifeq (Darwin,$(shell uname -s))
+  UID := $(shell id -u)
+  GID := $(shell id -g)
+  PIP3_HAL_CMD := lima podman run --arch $(LAMBDA_ARCH) --rm -it -v $(PIP_INSTALL_TARGET_DIR):$(PIP_INSTALL_TARGET_DIR) -u $(UID):$(GID) python:3.11
+endif
 
 .PHONY: update-function
-update-function: $(ZIP_PKG)
+update-function: $(LAMBDA_FUNCTION_ZIPFILE)
 	aws lambda update-function-code \
 		--function-name $(LAMBDA_FUNCTION_NAME) \
 		--zip-file fileb://$<
 
-$(ZIP_PKG): aws_lambda
+$(LAMBDA_FUNCTION_ZIPFILE): aws_lambda
 	cd aws_lambda && zip -9 $@ lambda_function.py
 	mv aws_lambda/$@ .
 
-.PHONY: $(ZIP_LAYER_PKG)
-$(ZIP_LAYER_PKG): $(TMP_PKG_DIR)
+$(PYTHON_PKGS_ZIPFILE_LAYER): $(PIP_INSTALL_TARGET_DIR)
 	rm -f $@
-	cd $(TMP_PKG_DIR)/.. && zip -9 -r /tmp/$@ $(shell basename $(TMP_PKG_DIR))
+	cd $(PIP_INSTALL_TARGET_DIR)/.. && zip -9 -r /tmp/$@ $(shell basename $(PIP_INSTALL_TARGET_DIR))
 	mv /tmp/$@ .
 
-$(TMP_PKG_DIR):
-	if [ -d $(TMP_PKG_DIR) ]; then rm -r $(TMP_PKG_DIR); fi
-	mkdir -p $(TMP_PKG_DIR)
-	$(PIP3_HAL_CMD) pip3 install yfinance==0.2.28 --upgrade --no-cache-dir --target $(TMP_PKG_DIR)
-	find $(TMP_PKG_DIR) -type d -name "__pycache__"  | xargs -I _ rm -r _
+.PHONY: $(PIP_INSTALL_TARGET_DIR)
+$(PIP_INSTALL_TARGET_DIR):
+	if [ -d $(PIP_INSTALL_TARGET_DIR) ]; then rm -r $(PIP_INSTALL_TARGET_DIR); fi
+	mkdir -p $(PIP_INSTALL_TARGET_DIR)
+	$(PIP3_HAL_CMD) pip3 install yfinance==0.2.28 --upgrade --no-cache-dir --target $(PIP_INSTALL_TARGET_DIR)
+	find $(PIP_INSTALL_TARGET_DIR) -type d -name "__pycache__"  | xargs -I _ rm -r _
+	patch -p1 -d $(PIP_INSTALL_TARGET_DIR)/yfinance < yfinance-patches.diff
 
 .PHONY: update-layer
-update-layer: $(ZIP_LAYER_PKG)
+update-layer: $(PYTHON_PKGS_ZIPFILE_LAYER)
 	aws lambda publish-layer-version \
 		--layer-name yfinance \
 		--zip-file fileb://$<
@@ -42,8 +51,8 @@ update-layer: $(ZIP_LAYER_PKG)
 	    "or via the console."
 
 clean:
-	rm -f $(ZIP_PKG) $(ZIP_LAYER_PKG)
-	if [ -d $(TMP_PKG_DIR) ]; then rm -r $(TMP_PKG_DIR); fi
+	rm -f $(LAMBDA_FUNCTION_ZIPFILE) $(PYTHON_PKGS_ZIPFILE_LAYER)
+	if [ -d $(PIP_INSTALL_TARGET_DIR) ]; then rm -r $(PIP_INSTALL_TARGET_DIR); fi
 
 .PHONY: lambda-logs
 lambda-logs:

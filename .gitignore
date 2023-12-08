@@ -2,3 +2,5 @@
 /aws_lambda/package
 /deployment_package.zip
 /layer_package.zip
+/venv
+.tags

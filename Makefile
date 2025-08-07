@@ -13,9 +13,10 @@ PIP_INSTALL_TARGET_DIR := /tmp/lima/python-pkg-$(LAMBDA_FUNCTION_NAME)/python
 ifeq (Darwin,$(shell uname -s))
   UID := $(shell id -u)
   GID := $(shell id -g)
-  PIP3_HAL_CMD := lima podman run --arch $(LAMBDA_ARCH) --rm -it -v $(PIP_INSTALL_TARGET_DIR):$(PIP_INSTALL_TARGET_DIR) -u $(UID):$(GID) python:3.11
+  PIP3_HAL_CMD := lima podman run --arch $(LAMBDA_ARCH) --rm -it -v $(PIP_INSTALL_TARGET_DIR):$(PIP_INSTALL_TARGET_DIR) -u $(UID):$(GID) python:3.13
 endif
 
+# Only update the function code.
 .PHONY: update-function
 update-function: $(LAMBDA_FUNCTION_ZIPFILE)
 	aws lambda update-function-code \
@@ -35,17 +36,21 @@ $(PYTHON_PKGS_ZIPFILE_LAYER): $(PIP_INSTALL_TARGET_DIR)
 $(PIP_INSTALL_TARGET_DIR):
 	if [ -d $(PIP_INSTALL_TARGET_DIR) ]; then rm -r $(PIP_INSTALL_TARGET_DIR); fi
 	mkdir -p $(PIP_INSTALL_TARGET_DIR)
-	$(PIP3_HAL_CMD) pip3 install yfinance==0.2.28 --upgrade --no-cache-dir --target $(PIP_INSTALL_TARGET_DIR)
+	$(PIP3_HAL_CMD) pip3 install yfinance==0.2.65 --upgrade --no-cache-dir --target $(PIP_INSTALL_TARGET_DIR)
 	find $(PIP_INSTALL_TARGET_DIR) -type d -name "__pycache__"  | xargs -I _ rm -r _
-	patch -p1 -d $(PIP_INSTALL_TARGET_DIR)/yfinance < yfinance-patches.diff
+# Patches were for 0.2.28, 0.2.65 does not need it
+#	patch -p1 -d $(PIP_INSTALL_TARGET_DIR)/yfinance < yfinance-patches.diff
 
+# Update the lambda layer containing all the python modules. This is needed
+# when changing any of the modules
 .PHONY: update-layer
 update-layer: $(PYTHON_PKGS_ZIPFILE_LAYER)
 	aws lambda publish-layer-version \
 		--layer-name yfinance \
 		--zip-file fileb://$<
 	@echo "Delete the old layer version with\n" \
-		  "> aws delete-layer-version --version-number VERSION"
+		  "> aws lambda delete-layer-version --layer-name yfinance --version-number VERSION" \
+		  "Where VERSION is n-1 from the publish command above (or obtained via  aws lambda list-layer-versions --layer-name yfinance)"
 	@echo "Update the function to use the updated version with\n" \
   		"> aws update-function-configuration --function-name $(LAMBDA_FUNCTION_NAME) --layers arn:aws:lambda:REGION::layer:yfinance:VERSION # (i.e. LayerVersionArn from above)\n" \
 	    "or via the console."

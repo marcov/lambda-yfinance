@@ -78,18 +78,17 @@ def lambda_handler(event, context):
 
         try:
             logger.debug(f"{ticker}: all close: {all_close[ticker]}")
-            close_filt = tuple(filter(pandas.notna, all_close[ticker]))
 
-            if len(close_filt) <= 2:
+            values = all_close[ticker].dropna().values.flatten()
+            if len(values) <= 2:
                 logger.warning(
-                    # len close_filt for ZPRX.DE is 1 -- Date 2024-01-24    46.13 Name: Close, dtype: float64
-                    f"len close_filt for {ticker} is {len(close_filt)} -- {all_close[ticker]}"
+                    f"len values for {ticker} is {len(values)} -- {all_close[ticker]}"
                 )
-                if len(close_filt) < 2:
+                if len(values) < 2:
                     continue
 
-            curr = close_filt[-1]
-            prev = close_filt[-2]
+            curr = values[-1]
+            prev = values[-2]
 
         except KeyError as e:
             logger.error(f"Got exception {e} while reading price")

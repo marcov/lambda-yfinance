@@ -82,6 +82,7 @@ def lambda_handler(event, context):
 
             if len(close_filt) <= 2:
                 logger.warning(
+                    # len close_filt for ZPRX.DE is 1 -- Date 2024-01-24    46.13 Name: Close, dtype: float64
                     f"len close_filt for {ticker} is {len(close_filt)} -- {all_close[ticker]}"
                 )
                 if len(close_filt) < 2:

@@ -26,7 +26,7 @@ def handle_get_price():
 
 
 def main():
-    api.run()
+    api.run(host="127.0.0.1", port=3000)
 
 
 if __name__ == "__main__":
